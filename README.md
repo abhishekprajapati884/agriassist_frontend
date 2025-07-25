@@ -65,26 +65,6 @@ Market & Alerts APIs – Real-time crop price updates and personalized alerts.
 
 LLM AI Services – Chatbot and voice processing powered by Google Vertex AI (Gemini).
 
-📂 Project Structure
-
-agriassist-frontend/
-├── public/                  # Images & static files
-├── src/
-│   ├── api/                 # API service files (profileService, marketService, etc.)
-│   ├── components/
-│   │   ├── Header.jsx       # Top navigation with Sign-In & Language Dropdown
-│   │   ├── Footer.jsx       # Footer with copyright
-│   │   ├── Block1.jsx       # Dynamic helpful reminders / rotating info
-│   │   ├── Block2.jsx       # Market dashboard with scrolling crops
-│   │   ├── Block3.jsx       # Important alerts
-│   │   ├── ProfileModal.jsx # Farmer profile creation & editing
-│   │   └── SignInModal.jsx  # Sign-in modal
-│   ├── App.jsx              # Main page combining all blocks
-│   └── main.jsx             # Entry point
-├── package.json
-└── tailwind.config.js
-
-
 🚦 Current Status
 ✔ Frontend UI 90% complete – All major pages and modals are functional.
 ✔ Basic sign-in flow implemented (mock).
