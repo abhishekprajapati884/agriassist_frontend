@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import ChatModal from "./ChatModal";
 
 export default function Block2({ isSignedIn = false }) {
   const crops = [
@@ -14,6 +15,8 @@ export default function Block2({ isSignedIn = false }) {
   const [isPaused, setIsPaused] = useState(false);
   const [selectedCrop, setSelectedCrop] = useState(null);
   const [hovered, setHovered] = useState(false); // ✅ For showing buttons
+  const [showChatModal, setShowChatModal] = useState(false);
+
   const containerRef = useRef(null);
 
   // ✅ Continuous scrolling (unchanged)
@@ -41,7 +44,7 @@ export default function Block2({ isSignedIn = false }) {
     if (!isSignedIn) {
       window.openSignInModal();
     } else {
-      alert("Chatbot coming soon!");
+      setShowChatModal(true);
     }
   };
 
@@ -195,6 +198,11 @@ export default function Block2({ isSignedIn = false }) {
           </div>
         </div>
       )}
+    {/* ✅ Chat Modal */}
+    {showChatModal && (
+      <ChatModal closeModal={() => setShowChatModal(false)} />
+    )}
     </>
+
   );
 }

@@ -1,21 +1,64 @@
 import { useState, useEffect } from "react";
 import { FaUserCircle } from "react-icons/fa";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import { auth, googleProvider } from "../firebase";
+import { toast } from "react-toastify";
 
-export default function Header({ isSignedIn, setIsSignedIn, openProfile }) {
+export default function Header({ isSignedIn, setIsSignedIn, setUser, openProfile }) {
   const [showModal, setShowModal] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  // ✅ Expose Sign In modal globally (unchanged)
   useEffect(() => {
-    window.openSignInModal = () => {
-      setIsSignUp(false);
-      setShowModal(true);
-    };
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        setIsSignedIn(true);
+      } else {
+        setUser(null);
+        setIsSignedIn(false);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
-  const handleLogout = () => {
-    setIsSignedIn(false);
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    try {
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email, password);
+        toast.success("Account created successfully!");
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+        toast.success("Signed in successfully!");
+      }
+      setShowModal(false);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      toast.success("Signed in with Google!");
+      setShowModal(false);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    toast.info("Logged out successfully!");
     setShowDropdown(false);
   };
 
@@ -23,17 +66,11 @@ export default function Header({ isSignedIn, setIsSignedIn, openProfile }) {
     <>
       <header className="bg-white shadow-md">
         <div className="max-w-7xl mx-auto flex justify-between items-center h-20 px-6">
-          {/* ✅ Logo & Title */}
           <div className="flex items-center space-x-4 cursor-pointer">
-            <img
-              src="/logo.png"
-              alt="AgriAssist Logo"
-              className="w-20 h-20 object-contain"
-            />
+            <img src="/logo.png" alt="AgriAssist Logo" className="w-20 h-20 object-contain" />
             <h1 className="text-3xl font-bold text-gray-800">AgriAssist</h1>
           </div>
 
-          {/* ✅ Right Section */}
           <div className="flex items-center space-x-6 relative">
             {!isSignedIn ? (
               <button
@@ -72,8 +109,6 @@ export default function Header({ isSignedIn, setIsSignedIn, openProfile }) {
                 )}
               </div>
             )}
-
-            {/* ✅ Language Dropdown */}
             <div className="flex items-center space-x-2">
               <span className="text-base text-gray-700 font-medium">Language:</span>
               <select className="border border-gray-300 rounded px-3 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500">
@@ -86,7 +121,6 @@ export default function Header({ isSignedIn, setIsSignedIn, openProfile }) {
         </div>
       </header>
 
-      {/* ✅ Sign In Modal (unchanged) */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-80 relative">
@@ -99,29 +133,19 @@ export default function Header({ isSignedIn, setIsSignedIn, openProfile }) {
             <h2 className="text-2xl font-bold text-center mb-4 text-green-700">
               {isSignUp ? "Sign Up" : "Sign In"}
             </h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setIsSignedIn(true); // ✅ Mark user as signed in
-                setShowModal(false);
-              }}
-              className="space-y-4"
-            >
-              {isSignUp && (
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  className="w-full border p-2 rounded"
-                />
-              )}
+            <form onSubmit={handleAuth} className="space-y-4">
               <input
                 type="email"
                 placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full border p-2 rounded"
               />
               <input
                 type="password"
                 placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full border p-2 rounded"
               />
               <button
@@ -131,6 +155,12 @@ export default function Header({ isSignedIn, setIsSignedIn, openProfile }) {
                 {isSignUp ? "Sign Up" : "Sign In"}
               </button>
             </form>
+            <button
+              onClick={handleGoogleSignIn}
+              className="mt-3 w-full border p-2 rounded hover:bg-gray-100"
+            >
+              Sign in with Google
+            </button>
             <p className="text-sm text-center mt-3">
               {isSignUp ? (
                 <>

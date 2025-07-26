@@ -1,108 +1,195 @@
 import { useState, useEffect } from "react";
-import { FaRegCalendarCheck, FaLeaf, FaShieldAlt, FaPlus } from "react-icons/fa";
+import {
+  FaRegCalendarCheck,
+  FaLeaf,
+  FaShieldAlt,
+  FaPlus,
+  FaTrash,
+} from "react-icons/fa";
+import { db } from "../firebase";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 
-export default function Block1({ isSignedIn = false }) {
-  const [index, setIndex] = useState(0);
-  const [fade, setFade] = useState(true);
-  const [reminders, setReminders] = useState([
+export default function Block1({ isSignedIn = false, userEmail = null }) {
+  const [reminders, setReminders] = useState([]);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newReminder, setNewReminder] = useState("");
+  const [day, setDay] = useState(0);
+  const [hour, setHour] = useState(0);
+  const [minute, setMinute] = useState(0);
+
+  // ✅ Dummy demo reminders (ONLY before sign-in)
+  const demoReminders = [
     {
       icon: <FaRegCalendarCheck className="text-green-700 text-lg" />,
       title: "Subsidy Application",
       description: "Apply for the subsidy before the deadline.",
-      action: "View Details",
+      time: "2d:5h:30m",
     },
     {
       icon: <FaLeaf className="text-green-700 text-lg" />,
       title: "Plant Diagnosis",
       description: "Check the results of your plant photo diagnosis.",
-      action: "View Details",
+      time: "1d:0h:0m",
     },
     {
       icon: <FaShieldAlt className="text-green-700 text-lg" />,
       title: "Crop Protection",
       description: "Spray neem oil on your crops to protect them from pests.",
-      action: "Mark as Done",
-    },
-  ]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newReminder, setNewReminder] = useState("");
-
-  // ✅ Rotating info (before sign-in)
-  const contents = [
-    {
-      title: "Welcome to AgriAssist",
-      description: (
-        <>
-          <p className="mb-1">
-            Your personal farming companion — powered by intelligent agents.
-          </p>
-          <p>✅ Get proactive alerts tailored to your needs, set reminders, and stay informed.</p>
-          <p>✅ View personalized market trends for your crops and region.</p>
-          <p>✅ Chat with our smart assistant for quick help — in your language.</p>
-          <p>✅ Talk or type — it's your choice.</p>
-        </>
-      ),
-    },
-    {
-      title: "Namaskara, User!",
-      description: (
-        <>
-          <p className="mb-2">I’m here to help you with your farming needs:</p>
-          <ul className="space-y-1">
-            <li>🌦 <strong>Proactive Alert:</strong> Delay irrigation, rain expected.</li>
-            <li>🪴 <strong>Helpful Reminder:</strong> You asked about neem oil.</li>
-            <li>📊 <strong>Market Trends:</strong> Latest crop price updates.</li>
-            <li>🤖 <strong>Personal AI Assistant:</strong> Ask me anything about farming.</li>
-          </ul>
-        </>
-      ),
-    },
-    {
-      title: "Helpful Reminders",
-      description: (
-        <ul className="space-y-1">
-          <li>📅 <strong>Subsidy Application:</strong> Apply before the deadline.</li>
-          <li>🌱 <strong>Plant Diagnosis:</strong> View your plant photo diagnosis.</li>
-          <li>🛡 <strong>Crop Protection:</strong> Spray neem oil to protect crops.</li>
-        </ul>
-      ),
+      time: "0d:12h:0m",
     },
   ];
 
+  // ✅ Fetch reminders from Firestore only when signed in
   useEffect(() => {
-    if (isSignedIn) return;
-    const interval = setInterval(() => {
-      setFade(false);
-      setTimeout(() => {
-        setIndex((prev) => (prev + 1) % contents.length);
-        setFade(true);
-      }, 300);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [isSignedIn]);
+    const fetchReminders = async () => {
+      if (!isSignedIn || !userEmail) return;
 
-  const handleAddReminder = () => {
+      const docRef = doc(db, "users", userEmail);
+      const snap = await getDoc(docRef);
+
+      if (snap.exists()) {
+        const data = snap.data();
+        const fetched = data.personalization?.helpful_reminders || [];
+
+        const updated = fetched
+          .map((r) => {
+            if (!r.expiresAt) return r;
+            const remaining = r.expiresAt - Date.now();
+            if (remaining <= 0) {
+              return { ...r, remainingTime: "Expired" };
+            }
+            const d = Math.floor(remaining / 86400000);
+            const h = Math.floor((remaining % 86400000) / 3600000);
+            const m = Math.floor((remaining % 3600000) / 60000);
+            const s = Math.floor((remaining % 60000) / 1000);
+            return { ...r, remainingTime: `${d}d:${h}h:${m}m:${s}s` };
+          })
+          .sort((a, b) => (a.expiresAt || Infinity) - (b.expiresAt || Infinity));
+
+        setReminders(updated);
+      } else {
+        await setDoc(docRef, {
+          personalization: { helpful_reminders: [] },
+        });
+        setReminders([]);
+      }
+    };
+
+    fetchReminders();
+  }, [isSignedIn, userEmail]);
+
+  // ✅ Real-time Timer Update + Auto Delete
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const interval = setInterval(async () => {
+      const updatedReminders = reminders
+        .map((r) => {
+          if (!r.expiresAt) return r;
+          const remaining = r.expiresAt - Date.now();
+          if (remaining <= 0) {
+            return null; // mark for deletion
+          }
+          const d = Math.floor(remaining / 86400000);
+          const h = Math.floor((remaining % 86400000) / 3600000);
+          const m = Math.floor((remaining % 3600000) / 60000);
+          const s = Math.floor((remaining % 60000) / 1000);
+          return { ...r, remainingTime: `${d}d:${h}h:${m}m:${s}s` };
+        })
+        .filter(Boolean)
+        .sort((a, b) => (a.expiresAt || Infinity) - (b.expiresAt || Infinity));
+
+      setReminders(updatedReminders);
+
+      if (isSignedIn && userEmail) {
+        const docRef = doc(db, "users", userEmail);
+        await updateDoc(docRef, {
+          "personalization.helpful_reminders": updatedReminders,
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isSignedIn, reminders, userEmail]);
+
+  // ✅ Add Reminder
+  const handleAddReminder = async () => {
     if (!newReminder.trim()) return;
-    setReminders((prev) => [
-      ...prev,
+
+    const expiresAt =
+      Date.now() + day * 86400000 + hour * 3600000 + minute * 60000;
+
+    const updatedReminders = [
+      ...reminders,
       {
-        icon: <FaRegCalendarCheck className="text-green-700 text-lg" />,
+        icon: "calendar",
         title: newReminder,
         description: "Custom reminder added by you.",
-        action: "View Details",
+        expiresAt,
+        remainingTime: `${day}d:${hour}h:${minute}m:0s`,
       },
-    ]);
+    ].sort((a, b) => (a.expiresAt || Infinity) - (b.expiresAt || Infinity));
+
+    setReminders(updatedReminders);
+
+    if (isSignedIn && userEmail) {
+      const docRef = doc(db, "users", userEmail);
+      await updateDoc(docRef, {
+        "personalization.helpful_reminders": updatedReminders,
+      });
+    }
+
     setNewReminder("");
+    setDay(0);
+    setHour(0);
+    setMinute(0);
     setShowAddModal(false);
+  };
+
+  // ✅ Delete Reminder (manual delete)
+  const handleDeleteReminder = async (index) => {
+    const updatedReminders = reminders
+      .filter((_, i) => i !== index)
+      .sort((a, b) => (a.expiresAt || Infinity) - (b.expiresAt || Infinity));
+    setReminders(updatedReminders);
+
+    if (isSignedIn && userEmail) {
+      const docRef = doc(db, "users", userEmail);
+      await updateDoc(docRef, {
+        "personalization.helpful_reminders": updatedReminders,
+      });
+    }
+  };
+
+  // ✅ Render icons
+  const renderIcon = (icon) => {
+    if (icon === "calendar")
+      return <FaRegCalendarCheck className="text-green-700 text-lg" />;
+    if (icon === "leaf") return <FaLeaf className="text-green-700 text-lg" />;
+    if (icon === "shield")
+      return <FaShieldAlt className="text-green-700 text-lg" />;
+    return <FaRegCalendarCheck className="text-green-700 text-lg" />;
+  };
+
+  // ✅ Determine urgency (less than 5 min)
+  const isUrgent = (remainingTime) => {
+    if (!remainingTime || remainingTime === "Expired") return false;
+    const parts = remainingTime.split(":");
+    const d = parseInt(parts[0]);
+    const h = parseInt(parts[1]);
+    const m = parseInt(parts[2]);
+    const s = parseInt(parts[3]);
+    return d === 0 && h === 0 && (m < 5 || (m === 5 && s <= 0));
   };
 
   return (
     <div className="bg-white shadow-md rounded-lg p-6 w-full h-full overflow-hidden flex flex-col justify-center">
       {isSignedIn ? (
         <>
-          {/* ✅ Heading with Add Button */}
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-green-700">Helpful Reminders</h2>
+          {/* ✅ Heading with Add Button - FIXED AT TOP */}
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-xl font-bold text-green-700">
+              Helpful Reminders
+            </h2>
             <button
               onClick={() => setShowAddModal(true)}
               className="bg-green-700 text-white p-2 rounded-full hover:bg-green-800"
@@ -111,27 +198,49 @@ export default function Block1({ isSignedIn = false }) {
             </button>
           </div>
 
-          {/* ✅ Reminders List (Scrollable) */}
-          <div className="space-y-4 max-h-40 overflow-y-auto pr-2">
-            {reminders.map((reminder, index) => (
-              <div
-                key={index}
-                className="flex justify-between items-center border-b pb-2"
-              >
-                <div className="flex items-start space-x-3">
-                  <div>{reminder.icon}</div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {reminder.title}
-                    </p>
-                    <p className="text-xs text-gray-600">{reminder.description}</p>
+          {/* ✅ Scrollable Reminders List (Heading stays fixed) */}
+          <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+            {reminders.length === 0 ? (
+              <p className="text-gray-500 text-sm text-center">
+                No reminders yet! Add one to stay updated. ✅
+              </p>
+            ) : (
+              reminders.map((reminder, index) => (
+                <div
+                  key={index}
+                  className={`flex justify-between items-center border-b pb-2 p-2 rounded ${
+                    isUrgent(reminder.remainingTime)
+                      ? "bg-red-100 border-red-400"
+                      : ""
+                  }`}
+                >
+                  <div className="flex items-start space-x-3">
+                    <div>{renderIcon(reminder.icon)}</div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {reminder.title}
+                      </p>
+                      <p className="text-xs text-gray-600">{reminder.description}</p>
+                      {reminder.remainingTime && (
+                        <p
+                          className={`text-xs ${
+                            isUrgent(reminder.remainingTime)
+                              ? "text-red-600 font-bold"
+                              : "text-gray-500"
+                          }`}
+                        >
+                          ⏳ {reminder.remainingTime}
+                        </p>
+                      )}
+                    </div>
                   </div>
+                  <FaTrash
+                    className="text-red-500 text-sm cursor-pointer hover:text-red-700"
+                    onClick={() => handleDeleteReminder(index)}
+                  />
                 </div>
-                <button className="bg-gray-100 text-gray-800 text-xs font-medium px-3 py-1 rounded hover:bg-gray-200">
-                  {reminder.action}
-                </button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
 
 
@@ -155,6 +264,44 @@ export default function Block1({ isSignedIn = false }) {
                   className="w-full border rounded p-2 text-sm mb-4 focus:outline-green-700"
                   placeholder="Enter reminder title..."
                 />
+
+                {/* ✅ Farmer-Friendly Time Selection */}
+                <div className="flex space-x-2 mb-4">
+                  <select
+                    value={day}
+                    onChange={(e) => setDay(e.target.value)}
+                    className="border rounded p-2 text-sm"
+                  >
+                    {[...Array(31).keys()].map((d) => (
+                      <option key={d} value={d}>
+                        {d}d
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={hour}
+                    onChange={(e) => setHour(e.target.value)}
+                    className="border rounded p-2 text-sm"
+                  >
+                    {[...Array(24).keys()].map((h) => (
+                      <option key={h} value={h}>
+                        {h}h
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={minute}
+                    onChange={(e) => setMinute(e.target.value)}
+                    className="border rounded p-2 text-sm"
+                  >
+                    {[...Array(60).keys()].map((m) => (
+                      <option key={m} value={m}>
+                        {m}m
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <button
                   onClick={handleAddReminder}
                   className="w-full bg-green-700 text-white p-2 rounded hover:bg-green-800"
@@ -167,15 +314,39 @@ export default function Block1({ isSignedIn = false }) {
         </>
       ) : (
         <>
-          <h2 className="text-xl font-bold text-green-700 mb-3 transition-opacity duration-500">
-            {contents[index].title}
+          <h2 className="text-xl font-bold text-green-700 mb-4">
+            Helpful Reminders
           </h2>
-          <div
-            className={`text-gray-700 text-sm transition-opacity duration-500 ${
-              fade ? "opacity-100" : "opacity-0"
-            }`}
-          >
-            {contents[index].description}
+          <div className="space-y-4">
+            {demoReminders.map((reminder, index) => (
+              <div
+                key={index}
+                className="flex justify-between items-center border-b pb-2"
+              >
+                <div className="flex items-start space-x-3">
+                  <div>{reminder.icon}</div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {reminder.title}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      {reminder.description}
+                    </p>
+                    {reminder.time && (
+                      <p className="text-xs text-gray-500">
+                        ⏳ {reminder.time}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <FaTrash
+                  className="text-red-400 text-sm cursor-pointer hover:text-red-600"
+                  onClick={() =>
+                    setReminders((prev) => prev.filter((_, i) => i !== index))
+                  }
+                />
+              </div>
+            ))}
           </div>
         </>
       )}
