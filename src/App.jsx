@@ -64,7 +64,7 @@ export default function App() {
             {/* profile={existingProfile} />  */}
           </div>
           <div className="h-1/2">
-            <Block2 isSignedIn={isSignedIn} onSignInClick={openSignIn} />
+            <Block2 isSignedIn={isSignedIn} onSignInClick={openSignIn} userEmail={user?.email}/>
           </div>
         </div>
 

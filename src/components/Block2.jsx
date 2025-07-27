@@ -1,29 +1,99 @@
 import { useState, useEffect, useRef } from "react";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import ChatModal from "./ChatModal";
+import { toast } from "react-toastify";
 
-export default function Block2({ isSignedIn = false }) {
-  const crops = [
+export default function Block2({ isSignedIn = false, userEmail }) {
+  const [crops, setCrops] = useState([
     { name: "Tomato", price: "₹25/kg", img: "/tomato.jpeg" },
     { name: "Wheat", price: "₹20/kg", img: "/wheat.jpeg" },
     { name: "Rice", price: "₹18/kg", img: "/rice.jpeg" },
     { name: "Cotton", price: "₹30/kg", img: "/cotton.jpeg" },
     { name: "Maize", price: "₹22/kg", img: "/maize.jpeg" },
-  ];
+  ]); // ✅ Default demo crops for before API loads
+
+  const [suggestion, setSuggestion] = useState(
+    "Prices are up 5% today. Consider holding for 2 more days."
+  );
+  const [loading, setLoading] = useState(false);
 
   const [translateX, setTranslateX] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [selectedCrop, setSelectedCrop] = useState(null);
-  const [hovered, setHovered] = useState(false); // ✅ For showing buttons
+  const [hovered, setHovered] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
 
   const containerRef = useRef(null);
+
+  // ✅ Fetch crops & suggestion dynamically (only when signed in)
+  useEffect(() => {
+    const fetchMarketData = async () => {
+      if (!isSignedIn || !userEmail) return;
+      setLoading(true);
+
+      try {
+        // ✅ 1. Fetch Crops from Backend
+        const cropRes = await fetch("http://127.0.0.1:5000/api/trend", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email: userEmail }),
+        });
+
+        const cropData = await cropRes.json();
+        console.log("✅ Crops Data:", cropData);
+
+        if (cropData.status === "success" && cropData.crops?.length) {
+          setCrops(
+            cropData.crops.map((c) => ({
+              name: c.name,
+              price: c.price,
+              img: c.image, // ensure backend sends correct image URL
+            }))
+          );
+        } else {
+          toast.error("Could not fetch crops, showing default.");
+        }
+
+        // ✅ 2. Fetch Personalized Suggestions
+        const suggRes = await fetch(
+          "http://127.0.0.1:5000/api/personalized-market-trend",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ email: userEmail }),
+          }
+        );
+
+        const suggData = await suggRes.json();
+        console.log("✅ Suggestions:", suggData);
+
+        if (suggData.status === "success") {
+          setSuggestion(suggData.scheme_advisor);
+        } else {
+          setSuggestion("No smart suggestions available today.");
+        }
+      } catch (error) {
+        console.error("❌ Error fetching market data:", error);
+        toast.error("Error fetching market data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMarketData();
+  }, [isSignedIn, userEmail]); // ✅ Runs only when signed-in status or email changes
+
 
   // ✅ Continuous scrolling (unchanged)
   useEffect(() => {
     if (isPaused) return;
 
     const interval = setInterval(() => {
+      if (!containerRef.current) return; // ✅ Prevent null errors
       setTranslateX((prev) => {
         const containerWidth = containerRef.current.scrollWidth / 2;
         return Math.abs(prev) >= containerWidth ? 0 : prev - 0.5;
@@ -33,11 +103,8 @@ export default function Block2({ isSignedIn = false }) {
     return () => clearInterval(interval);
   }, [isPaused]);
 
-  // ✅ Manual Scroll (on button click)
   const manualScroll = (direction) => {
-    setTranslateX((prev) =>
-      direction === "left" ? prev + 40 : prev - 40
-    );
+    setTranslateX((prev) => (direction === "left" ? prev + 40 : prev - 40));
   };
 
   const handleSearchClick = () => {
@@ -66,56 +133,59 @@ export default function Block2({ isSignedIn = false }) {
         </h2>
 
         {/* ✅ Continuous Scrolling Container */}
-        <div className="relative w-full overflow-hidden h-28">
-          <div
-            ref={containerRef}
-            className="flex gap-4"
-            style={{
-              transform: `translateX(${translateX}px)`,
-              transition: "transform 0.016s linear",
-            }}
-          >
-            {[...crops, ...crops].map((crop, i) => (
-              <div
-                key={i}
-                className="w-36 flex-shrink-0 bg-gray-50 border rounded-lg p-2 shadow-sm hover:shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer"
-                onClick={() => setSelectedCrop(crop)}
-              >
-                <img
-                  src={crop.img}
-                  alt={crop.name}
-                  className="h-16 w-full object-cover rounded"
-                />
-                <p className="text-sm font-bold mt-1">{crop.name}</p>
-                <p className="text-xs text-gray-600">
-                  {isSignedIn
-                    ? `Latest Price: ${crop.price}`
-                    : "Sign in to see price"}
-                </p>
-              </div>
-            ))}
+        {loading ? (
+          <p className="text-sm text-gray-500">⏳ Loading market data...</p>
+        ) : (
+          <div className="relative w-full overflow-hidden h-28">
+            <div
+              ref={containerRef}
+              className="flex gap-4"
+              style={{
+                transform: `translateX(${translateX}px)`,
+                transition: "transform 0.016s linear",
+              }}
+            >
+              {[...crops, ...crops].map((crop, i) => (
+                <div
+                  key={i}
+                  className="w-36 flex-shrink-0 bg-gray-50 border rounded-lg p-2 shadow-sm hover:shadow-lg hover:scale-105 transition-transform duration-300 cursor-pointer"
+                  onClick={() => setSelectedCrop(crop)}
+                >
+                  <img
+                    src={crop.img}
+                    alt={crop.name}
+                    className="h-16 w-full object-cover rounded"
+                  />
+                  <p className="text-sm font-bold mt-1">{crop.name}</p>
+                  <p className="text-xs text-gray-600">
+                    {isSignedIn
+                      ? `Latest Price: ${crop.price}`
+                      : "Sign in to see price"}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {hovered && (
+              <>
+                <button
+                  className="absolute left-0 top-1/2 -translate-y-1/2 bg-green-700 text-white p-2 rounded-full shadow-md hover:bg-green-800 z-10"
+                  onClick={() => manualScroll("left")}
+                >
+                  <FaChevronLeft />
+                </button>
+                <button
+                  className="absolute right-0 top-1/2 -translate-y-1/2 bg-green-700 text-white p-2 rounded-full shadow-md hover:bg-green-800 z-10"
+                  onClick={() => manualScroll("right")}
+                >
+                  <FaChevronRight />
+                </button>
+              </>
+            )}
           </div>
+        )}
 
-          {/* ✅ Left & Right Buttons (only on hover) */}
-          {hovered && (
-            <>
-              <button
-                className="absolute left-0 top-1/2 -translate-y-1/2 bg-green-700 text-white p-2 rounded-full shadow-md hover:bg-green-800 z-10"
-                onClick={() => manualScroll("left")}
-              >
-                <FaChevronLeft />
-              </button>
-              <button
-                className="absolute right-0 top-1/2 -translate-y-1/2 bg-green-700 text-white p-2 rounded-full shadow-md hover:bg-green-800 z-10"
-                onClick={() => manualScroll("right")}
-              >
-                <FaChevronRight />
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* ✅ Search Box with Mic Icon */}
+        {/* ✅ Search Box */}
         <div
           onClick={handleSearchClick}
           className="mt-3 cursor-pointer flex items-center justify-between border rounded px-3 py-2 text-sm bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -136,11 +206,10 @@ export default function Block2({ isSignedIn = false }) {
           </svg>
         </div>
 
-
         {/* ✅ Suggestions */}
         <p className="text-xs text-gray-500 mt-2">
           {isSignedIn
-            ? "Prices are up 5% today. Consider holding for 2 more days."
+            ? suggestion
             : "Sign in to see amazing facts/suggestions for today by our agents."}
         </p>
       </div>
@@ -198,11 +267,11 @@ export default function Block2({ isSignedIn = false }) {
           </div>
         </div>
       )}
-    {/* ✅ Chat Modal */}
-    {showChatModal && (
-      <ChatModal closeModal={() => setShowChatModal(false)} />
-    )}
-    </>
 
+      {/* ✅ Chat Modal */}
+      {showChatModal && (
+        <ChatModal closeModal={() => setShowChatModal(false)} userEmail={userEmail} />
+      )}
+    </>
   );
 }

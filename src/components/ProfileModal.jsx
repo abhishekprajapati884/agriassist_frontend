@@ -3,10 +3,17 @@ import { FaMicrophone } from "react-icons/fa";
 import { toast } from "react-toastify";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase"; // ✅ Adjust path if needed
+import AudioRecorder from "../utils/audioRecorder";
+
 // import toast from "react-hot-toast";
 
 export default function ProfileModal({ closeModal, existingProfile, saveProfile, userEmail }) {
   const [mode, setMode] = useState("text");
+  const [isRecording, setIsRecording] = useState(false);
+  const [recorder] = useState(new AudioRecorder());
+  const [transcription, setTranscription] = useState("");
+  const [status, setStatus] = useState(null);
+
 
   // ✅ Initialize Profile with default values
   const [profile, setProfile] = useState({
@@ -102,6 +109,43 @@ export default function ProfileModal({ closeModal, existingProfile, saveProfile,
       return obj;
     });
   };
+
+  const handleAudioRecord = async () => {
+  if (!isRecording) {
+    await recorder.startRecording();
+    setIsRecording(true);
+  } else {
+    const formData = await recorder.toFormData();
+    setIsRecording(false);
+
+    const res = await fetch("http://localhost:5000/transcribe-profile", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+    setTranscription(data.transcribed_text || "No transcription available.");
+    setStatus(data.status);
+
+    if (data.status && data.profile_json) {
+      setProfile((prev) => ({
+        ...prev,
+        ...data.profile_json,
+        farmer_profile: {
+          ...prev.farmer_profile,
+          ...data.profile_json.farmer_profile,
+        },
+      }));
+
+      setTimeout(() => {
+        saveProfile(data.profile_json);
+        alert("✅ Profile updated successfully using audio!");
+        closeModal();
+      }, 1000);
+    }
+  }
+};
+
 
   const addArrayItem = (path, itemTemplate = "") => {
     const keys = path.split(".");
@@ -412,11 +456,29 @@ export default function ProfileModal({ closeModal, existingProfile, saveProfile,
         ) : (
           <div className="flex flex-col items-center justify-center h-[calc(100%-110px)]">
             <p className="text-gray-700 mb-4 text-center">
-              🎤 Speak clearly following the sample instruction to record your details.
+              🎤 Speak clearly to record your details.
             </p>
-            <button className="bg-green-700 text-white p-4 rounded-full hover:bg-green-800">
+            <button
+              onClick={handleAudioRecord}
+              className={`p-4 rounded-full ${
+                isRecording
+                  ? "bg-red-500 text-white animate-pulse"
+                  : "bg-green-700 text-white hover:bg-green-800"
+              }`}
+            >
               <FaMicrophone className="text-3xl" />
             </button>
+            {transcription && (
+              <div
+                className={`border rounded p-3 mt-4 w-full max-w-md max-h-32 overflow-y-auto text-sm ${
+                  status === false
+                    ? "border-red-400 bg-red-50 text-red-700"
+                    : "border-gray-300 bg-gray-50 text-gray-700"
+                }`}
+              >
+                <strong>Transcription:</strong> {transcription}
+              </div>
+            )}
           </div>
         )}
       </div>
